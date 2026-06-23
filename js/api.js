@@ -1,4 +1,4 @@
-// api.js - FULLY COMMENTED VERSION (Part 1)
+// api.js
 name=api.js url=https://github.com/computerBoy-dev/bucket/blob/main/js/api.js#L1-L100
 
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut, updateProfile, updatePassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
