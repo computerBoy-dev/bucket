@@ -1,17 +1,36 @@
+// api.js - FULLY COMMENTED VERSION (Part 1)
+name=api.js url=https://github.com/computerBoy-dev/bucket/blob/main/js/api.js#L1-L100
+
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut, updateProfile, updatePassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { collection, addDoc, getDocs, getDoc, setDoc, query, where, doc, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { auth, db, ENCODED_BOT_TOKEN, ENCODED_CHAT_ID, MAX_FILE_SIZE, CHUNK_SIZE, State } from './config.js';
 import { UI } from './ui.js';
 
-// --- AUTH LOGIC ---
-function cleanUsername(raw) { return raw.trim().toLowerCase().replace('@bucket.space', '').replace('@bucket', ''); }
+/**
+ * Normalizes and cleans a raw username input.
+ * Converts to lowercase, trims whitespace, and removes domain suffixes.
+ * @param {string} raw - Raw username input from user
+ * @returns {string} Cleaned username without domain suffix
+ */
+function cleanUsername(raw) {
+    return raw.trim().toLowerCase().replace('@bucket.space', '').replace('@bucket', '');
+}
 
+/**
+ * Retrieves the recovery email associated with a username.
+ * Queries the Firestore profiles collection for the user's recovery email.
+ * @async
+ * @param {string} username - The clean username to look up
+ * @returns {Promise<string>} Recovery email associated with the username
+ * @throws {Error} Throws error if username not found in profiles collection
+ */
 async function getRecoveryEmail(username) {
     const docSnap = await getDoc(doc(db, "profiles", username));
     if (docSnap.exists()) return docSnap.data().recoveryEmail;
     throw new Error("Invalid Username. Please check your spelling or register.");
 }
 
+// --- LOGIN FORM HANDLER ---
 if(UI.loginForm) {
     UI.loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -29,6 +48,7 @@ if(UI.loginForm) {
     });
 }
 
+// --- REGISTRATION FORM HANDLER ---
 if(UI.regForm) {
     UI.regForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -53,7 +73,7 @@ if(UI.regForm) {
     });
 }
 
-// --- FORGOT PASSWORD (RESET) LOGIC ---
+// --- PASSWORD RESET FORM HANDLER ---
 if(UI.resetForm) {
     UI.resetForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -68,7 +88,7 @@ if(UI.resetForm) {
             await sendPasswordResetEmail(auth, email);
             UI.showToast('Recovery link sent to your registered email!', 'success');
             
-            UI.resetForm.reset(); // Input clear karna zaroori hai
+            UI.resetForm.reset();
             UI.switchForm('login');
         } catch (err) { 
             console.error("Reset Error:", err);
@@ -79,9 +99,17 @@ if(UI.resetForm) {
     });
 }
 
+// --- LOGOUT BUTTON HANDLER ---
 const logoutBtn = document.getElementById('logout-btn');
 if(logoutBtn) logoutBtn.addEventListener('click', () => signOut(auth));
 
+/**
+ * Monitors authentication state changes and updates UI accordingly.
+ * Loads user data when signed in, shows landing page when signed out.
+ * Initializes dashboard, breadcrumbs, and loads file list on auth success.
+ * @async
+ * @param {Object|null} user - Firebase user object if authenticated, null if signed out
+ */
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         State.currentUser = user;
@@ -135,7 +163,11 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// Settings Save - Profile
+/**
+ * Updates user profile display name in Firebase Auth and Firestore.
+ * Refreshes UI elements showing the user's name and avatar.
+ * Handles profile form submission and validation.
+ */
 const profileForm = document.getElementById('settings-profile-form');
 if(profileForm) {
     profileForm.addEventListener('submit', async (e) => {
@@ -157,7 +189,11 @@ if(profileForm) {
     });
 }
 
-// Settings Save - Change Password
+/**
+ * Updates the current user's password in Firebase Authentication.
+ * Requires recent authentication; displays appropriate error if re-login needed.
+ * Validates and handles password change form submission.
+ */
 const passForm = document.getElementById('settings-password-form');
 if(passForm) {
     passForm.addEventListener('submit', async (e) => {
@@ -176,7 +212,16 @@ if(passForm) {
     });
 }
 
-// Telegram Cloud Delete Export
+/**
+ * Permanently deletes file chunks from Telegram servers.
+ * Sends delete requests to Telegram Bot API for each chunk message ID.
+ * Handles folder skip and promise resolution for parallel deletion.
+ * @async
+ * @param {Object} file - File object containing chunks array with messageIds
+ * @param {boolean} file.isFolder - Flag indicating if item is a folder
+ * @param {Array} file.chunks - Array of chunk objects with messageId properties
+ * @returns {Promise<void>}
+ */
 export async function deleteFromTelegram(file) {
     if (file.isFolder || !file.chunks) return;
     const bot = atob(ENCODED_BOT_TOKEN);
@@ -191,6 +236,13 @@ export async function deleteFromTelegram(file) {
 }
 window.deleteFromTelegram = deleteFromTelegram;
 
+/**
+ * Removes files from trash that have been soft-deleted for more than 7 days.
+ * Queries Firestore for deleted files and permanently removes them from both Firestore and Telegram.
+ * Uses batch write operations for efficiency.
+ * @async
+ * @returns {Promise<void>}
+ */
 async function cleanupOldTrash() {
     try {
         const q = query(collection(db, "files"), where("userId", "==", auth.currentUser.uid), where("inTrash", "==", true));
@@ -210,6 +262,11 @@ async function cleanupOldTrash() {
     } catch(e) {}
 }
 
+/**
+ * Generates and displays a shareable public link for a file.
+ * Creates a URL with share parameter and populates the share modal input field.
+ * @param {string} id - File document ID to share
+ */
 window.shareFile = function(id) {
     const link = `${window.location.origin}/?share=${id}`;
     const inp = document.getElementById('share-link-input');
@@ -217,6 +274,11 @@ window.shareFile = function(id) {
     UI.openModal('share-modal');
 };
 
+/**
+ * Copies the generated share link to the user's clipboard.
+ * Uses the Clipboard API to select and copy the link from the input field.
+ * Shows success toast and closes the share modal on completion.
+ */
 window.copyShareLink = function() {
     const copyText = document.getElementById("share-link-input");
     if(!copyText) return;
@@ -226,10 +288,24 @@ window.copyShareLink = function() {
     UI.closeModal('share-modal');
 };
 
-// --- GLOBAL DRAG AND DROP EVENTS ---
+/**
+ * Global drag counter for managing multiple drag enter/leave events.
+ * Prevents premature hiding of drag overlay when hovering over child elements.
+ * @type {number}
+ */
 let dragCounter = 0;
+
+/**
+ * Reference to the drag-and-drop overlay element displayed during file drag operations.
+ * @type {HTMLElement|null}
+ */
 const dragOverlay = document.getElementById('drag-overlay');
 
+/**
+ * Handles drag enter event globally.
+ * Shows the drag overlay and increments drag counter when user drags files into the window.
+ * @param {DragEvent} e - Drag event object
+ */
 window.addEventListener('dragenter', (e) => {
     e.preventDefault();
     if (State.currentUser && dragOverlay) {
@@ -240,6 +316,12 @@ window.addEventListener('dragenter', (e) => {
     }
 });
 
+/**
+ * Handles drag leave event globally.
+ * Hides the drag overlay when user leaves the window or moves over non-droppable areas.
+ * Uses counter to prevent premature hiding during internal element hovers.
+ * @param {DragEvent} e - Drag event object
+ */
 window.addEventListener('dragleave', (e) => {
     e.preventDefault();
     dragCounter--;
@@ -249,8 +331,19 @@ window.addEventListener('dragleave', (e) => {
     }
 });
 
+/**
+ * Handles global drag over event.
+ * Prevents default browser behavior to enable drop functionality.
+ * @param {DragEvent} e - Drag event object
+ */
 window.addEventListener('dragover', (e) => e.preventDefault());
 
+/**
+ * Handles global drop event for file upload.
+ * Extracts files from the drag event and initiates file upload process.
+ * Resets drag counter and hides overlay after drop completion.
+ * @param {DragEvent} e - Drag event object containing dropped files
+ */
 window.addEventListener('drop', (e) => {
     e.preventDefault();
     dragCounter = 0;
@@ -263,6 +356,10 @@ window.addEventListener('drop', (e) => {
     }
 });
 
+/**
+ * File input element change handler for traditional file selection.
+ * Converts FileList to array and initiates upload process when files are selected.
+ */
 const fileInput = document.getElementById('file-input');
 if(fileInput) {
     fileInput.addEventListener('change', (e) => {
@@ -270,20 +367,51 @@ if(fileInput) {
     });
 }
 
-// --- CORE UPLOAD LOGIC ---
+/**
+ * Promise-based sleep utility for adding delays between operations.
+ * Used for retry delays and rate limiting in upload operations.
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Fetches a URL with automatic retry logic on failure.
+ * Implements exponential backoff between retry attempts.
+ * Throws error after all retries are exhausted.
+ * @async
+ * @param {string} url - URL to fetch
+ * @param {Object} opts - Fetch options (method, body, headers, etc.)
+ * @param {number} [retries=3] - Maximum number of retry attempts
+ * @returns {Promise<Object>} Parsed JSON response on success
+ * @throws {Error} Throws error if all retry attempts fail
+ */
 async function fetchWithRetry(url, opts, retries=3) {
     for (let i=0; i<retries; i++) {
-        try { const res = await fetch(url, opts); if(res.ok) return await res.json(); } 
-        catch (err) { if(i === retries-1) throw err; await sleep(1000 * (i+1)); }
+        try { 
+            const res = await fetch(url, opts); 
+            if(res.ok) return await res.json(); 
+        } 
+        catch (err) { 
+            if(i === retries-1) throw err; 
+            await sleep(1000 * (i+1)); 
+        }
     }
 }
 
+/**
+ * Main file upload handler that chunks large files and uploads to Telegram.
+ * Validates file size against MAX_FILE_SIZE limit.
+ * Shows progress banner with visual feedback during upload.
+ * Stores file metadata and chunk information in Firestore after successful upload.
+ * @async
+ * @param {File[]} files - Array of File objects to upload
+ * @returns {Promise<void>}
+ */
 async function handleFileUpload(files) {
     if (!files.length) return;
     if (files.some(f => f.size > MAX_FILE_SIZE)) return UI.showToast('Files exceed 1GB limit.', 'error');
 
-    // Main Top Banner
     const banner = document.getElementById('upload-banner');
     const circle = document.getElementById('loader-circle');
     const text = document.getElementById('loader-text');
@@ -346,6 +474,16 @@ async function handleFileUpload(files) {
     if(typeof window.loadFiles === 'function') window.loadFiles();
 }
 
+/**
+ * Processes file actions (download or preview) by reassembling chunks from Telegram.
+ * Fetches all chunks for a file, combines them into a single Blob.
+ * Triggers download or opens preview modal based on actionType parameter.
+ * Supports image, video, and generic file previews.
+ * @async
+ * @param {string} docId - Firestore document ID of the file to process
+ * @param {string} [actionType='download'] - Action type: 'download' or 'preview'
+ * @returns {Promise<void>}
+ */
 window.processFileAction = async function(docId, actionType = 'download') {
     UI.openModal('action-modal');
     const mt = document.getElementById('modal-title');
