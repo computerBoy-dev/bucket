@@ -1,9 +1,18 @@
+// main.js
+name=main.js url=https://github.com/computerBoy-dev/bucket/blob/main/js/main.js
+
 import { db, State } from './config.js';
 import { UI } from './ui.js';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, query, where, doc, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { deleteFromTelegram } from './api.js';
 
-// --- BULK SELECTION ACTIONS ---
+/**
+ * Toggles the selection state of a file or folder by ID.
+ * Adds to or removes from the selectedItems Set based on current state.
+ * Re-renders the file list and updates selection bar after toggle.
+ * @param {string} id - File or folder document ID to toggle selection for
+ * @param {Event} [event] - Optional event object to prevent propagation
+ */
 export function toggleSelect(id, event) {
     if(event) event.stopPropagation();
     if(State.selectedItems.has(id)) State.selectedItems.delete(id);
@@ -12,12 +21,24 @@ export function toggleSelect(id, event) {
 }
 window.toggleSelect = toggleSelect;
 
+/**
+ * Clears all selected items from the selection Set.
+ * Re-renders the file list to update selection UI state.
+ */
 export function clearSelection() {
     State.selectedItems.clear();
     renderFiles();
 }
 window.clearSelection = clearSelection;
 
+/**
+ * Moves all currently selected items to the trash.
+ * Uses batch write operation for efficiency.
+ * Updates file objects in State and shows success message.
+ * Clears selection and re-renders after completion.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function bulkMoveToTrash() {
     if(State.selectedItems.size === 0) return;
     const batch = writeBatch(db);
@@ -35,6 +56,14 @@ export async function bulkMoveToTrash() {
 }
 window.bulkMoveToTrash = bulkMoveToTrash;
 
+/**
+ * Restores all currently selected items from the trash.
+ * Removes inTrash flag and clears deletedAt timestamp.
+ * Uses batch write operation for efficiency.
+ * Clears selection and re-renders after completion.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function bulkRestore() {
     if(State.selectedItems.size === 0) return;
     const batch = writeBatch(db);
@@ -52,6 +81,10 @@ export async function bulkRestore() {
 }
 window.bulkRestore = bulkRestore;
 
+/**
+ * Opens the bulk delete confirmation modal.
+ * Displays the count of selected items pending permanent deletion.
+ */
 export function openBulkDeleteModal() {
     UI.openModal('bulk-delete-modal');
     const cnt = document.getElementById('bulk-delete-count');
@@ -59,11 +92,18 @@ export function openBulkDeleteModal() {
 }
 window.openBulkDeleteModal = openBulkDeleteModal;
 
+/**
+ * Permanently deletes all selected items after user confirmation.
+ * Deletes chunks from Telegram for files.
+ * Removes documents from Firestore and updates State.
+ * Uses batch write for efficiency.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function confirmBulkDelete() {
     UI.closeModal('bulk-delete-modal');
     if(State.selectedItems.size === 0) return;
     
-    // Permanent Telegram Delete for Bulk
     for (const id of State.selectedItems) {
         const file = State.allFiles.find(f => f.id === id);
         if (file) await deleteFromTelegram(file);
@@ -81,6 +121,14 @@ export async function confirmBulkDelete() {
 }
 window.confirmBulkDelete = confirmBulkDelete;
 
+/**
+ * Toggles star status for all selected items.
+ * If any item is unstarred, stars all selected items.
+ * If all are starred, unstar all selected items.
+ * Uses batch write operation for efficiency.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function bulkToggleStar() {
     if(State.selectedItems.size === 0) return;
     const batch = writeBatch(db);
@@ -104,7 +152,14 @@ export async function bulkToggleStar() {
 }
 window.bulkToggleStar = bulkToggleStar;
 
-// --- INDIVIDUAL FILE & FOLDER ACTIONS ---
+/**
+ * Creates a new folder in the current directory.
+ * Validates folder name is not empty.
+ * Adds folder document to Firestore with default metadata.
+ * Re-loads file list and shows success message after creation.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function createFolder() {
     const nameInput = document.getElementById('new-folder-name');
     if(!nameInput) return;
@@ -122,6 +177,14 @@ export async function createFolder() {
 }
 window.createFolder = createFolder;
 
+/**
+ * Renames a file or folder to a new name.
+ * Validates new name is not empty.
+ * Updates Firestore document and State object.
+ * Re-renders file list after successful rename.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function renameItem() {
     if(!State.itemToRename) return;
     const input = document.getElementById('rename-input');
@@ -140,6 +203,14 @@ export async function renameItem() {
 }
 window.renameItem = renameItem;
 
+/**
+ * Toggles the starred status of a single file or folder.
+ * Updates Firestore and State with new starred status.
+ * Shows success message indicating the new starred state.
+ * @async
+ * @param {string} id - File or folder document ID to toggle
+ * @returns {Promise<void>}
+ */
 export async function toggleStar(id) {
     const file = State.allFiles.find(f => f.id === id);
     if(!file) return;
@@ -152,6 +223,15 @@ export async function toggleStar(id) {
 }
 window.toggleStar = toggleStar;
 
+/**
+ * Moves a single file or folder to the trash.
+ * Sets inTrash flag and deletedAt timestamp.
+ * Removes item from selection if it was selected.
+ * Re-renders file list after move.
+ * @async
+ * @param {string} id - File or folder document ID to move
+ * @returns {Promise<void>}
+ */
 export async function moveToTrash(id) {
     try {
         await updateDoc(doc(db, "files", id), { inTrash: true, deletedAt: Date.now() });
@@ -164,6 +244,15 @@ export async function moveToTrash(id) {
 }
 window.moveToTrash = moveToTrash;
 
+/**
+ * Restores a single file or folder from the trash.
+ * Removes inTrash flag and clears deletedAt timestamp.
+ * Removes item from selection if it was selected.
+ * Re-renders file list after restoration.
+ * @async
+ * @param {string} id - File or folder document ID to restore
+ * @returns {Promise<void>}
+ */
 export async function restoreFromTrash(id) {
     try {
         await updateDoc(doc(db, "files", id), { inTrash: false, deletedAt: null });
@@ -176,11 +265,18 @@ export async function restoreFromTrash(id) {
 }
 window.restoreFromTrash = restoreFromTrash;
 
+/**
+ * Permanently deletes a single file or folder after user confirmation.
+ * Deletes file chunks from Telegram if it's a file.
+ * Removes document from Firestore and updates State.
+ * Re-renders file list after deletion.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function confirmDelete() {
     if (!State.itemToDelete) return;
     UI.closeModal('delete-modal');
     try {
-        // Permanent Telegram Delete
         const file = State.allFiles.find(f => f.id === State.itemToDelete);
         if (file) await deleteFromTelegram(file);
 
@@ -194,7 +290,13 @@ export async function confirmDelete() {
 }
 window.confirmDelete = confirmDelete;
 
-// --- NAVIGATION & FILTERS ---
+/**
+ * Navigates into a folder by updating currentFolderId and breadcrumbs.
+ * Clears selection before folder entry.
+ * Re-renders file list to show folder contents.
+ * @param {string} id - Folder document ID to enter
+ * @param {string} name - Folder display name for breadcrumb
+ */
 export function enterFolder(id, name) {
     State.currentFolderId = id;
     State.breadcrumbs.push({ id, name });
@@ -203,6 +305,13 @@ export function enterFolder(id, name) {
 }
 window.enterFolder = enterFolder;
 
+/**
+ * Navigates to a specific breadcrumb position in folder hierarchy.
+ * Trims breadcrumb array and updates currentFolderId accordingly.
+ * Clears selection before navigation.
+ * Re-renders file list at the target folder level.
+ * @param {number} index - Index of the breadcrumb to navigate to
+ */
 export function goToBreadcrumb(index) {
     State.breadcrumbs = State.breadcrumbs.slice(0, index + 1);
     State.currentFolderId = State.breadcrumbs[State.breadcrumbs.length - 1].id;
@@ -211,6 +320,11 @@ export function goToBreadcrumb(index) {
 }
 window.goToBreadcrumb = goToBreadcrumb;
 
+/**
+ * Applies advanced search filters (file type and date range) to file display.
+ * Retrieves filter values from dropdown inputs in search modal.
+ * Stores filters in State and re-renders file list with filters applied.
+ */
 export function applyAdvancedSearch() {
     const typeSelect = document.getElementById('adv-search-type');
     const dateSelect = document.getElementById('adv-search-date');
@@ -221,6 +335,11 @@ export function applyAdvancedSearch() {
 }
 window.applyAdvancedSearch = applyAdvancedSearch;
 
+/**
+ * Search input event listener for real-time search filtering.
+ * Updates State.currentSearch as user types.
+ * Re-renders file list on each character input.
+ */
 const searchInput = document.getElementById('search-input');
 if(searchInput) {
     searchInput.addEventListener('input', (e) => { 
@@ -229,7 +348,15 @@ if(searchInput) {
     });
 }
 
-// --- RENDER LOGIC ---
+/**
+ * Core file rendering function that displays files and folders in the current view.
+ * Filters files based on current view (home, trash, starred, recent).
+ * Applies search and advanced filters to filtered file list.
+ * Renders breadcrumb navigation and selection bar.
+ * Generates HTML for both grid and list view modes.
+ * Handles star, delete, rename, share, and download actions.
+ * Updates storage display and creates Lucide icons.
+ */
 export function renderFiles() {
     const mainContainer = document.getElementById('main-content-container') || document.getElementById('file-list');
     if (!mainContainer) return;
@@ -240,7 +367,7 @@ export function renderFiles() {
     const bcContainer = document.getElementById('breadcrumbs');
     if (bcContainer) {
         bcContainer.innerHTML = State.breadcrumbs.map((bc, i) => `
-            <span class="${i === State.breadcrumbs.length-1 ? 'text-gray-900 font-bold' : 'cursor-pointer hover:text-blue-600 transition-colors'}" onclick="${i !== State.breadcrumbs.length-1 ? `goToBreadcrumb(${i})` : ''}">${bc.name}</span>
+            <span class="${i === State.breadcrumbs.length-1 ? 'text-gray-900 font-bold' : 'cursor-pointer hover:text-blue-600 transition-colors'}" onclick="${i !== State.breadcrumbs.length-1 ? `window.goToBreadcrumb(${i})` : ''}">${bc.name}</span>
             ${i < State.breadcrumbs.length - 1 ? '<i data-lucide="chevron-right" class="w-4 h-4 text-gray-400"></i>' : ''}
         `).join('');
     }
@@ -276,7 +403,6 @@ export function renderFiles() {
 
     if (State.currentView === 'recent') filtered = filtered.slice(0, 20);
 
-    // FOLDER TRASH FIX: Folders are now rendered if they pass the filters above
     const folders = filtered.filter(f => f.isFolder);
     const files = filtered.filter(f => !f.isFolder);
 
@@ -310,7 +436,7 @@ export function renderFiles() {
 
             finalHTML += `
             <div class="${selectClass} border rounded-xl p-3 cursor-pointer flex items-center gap-3 group transition-all" onclick="${State.currentView !== 'trash' ? `window.enterFolder('${f.id}', '${f.fileName}')` : ''}">
-                <button onclick="event.stopPropagation(); window.toggleSelect('${f.id}', event)" class="shrink-0 p-1 rounded-md ${isSelected ? 'text-blue-600 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-gray-500'} transition-opacity">
+                <button onclick="event.stopPropagation(); window.toggleSelect('${f.id}', event)" class="shrink-0 p-1 rounded-md ${isSelected ? 'text-blue-600 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'}">
                     <i data-lucide="${isSelected ? 'check-square' : 'square'}" class="w-5 h-5 ${isSelected ? 'fill-blue-100' : ''}"></i>
                 </button>
                 <div class="flex items-center gap-2 truncate flex-grow">
@@ -329,7 +455,7 @@ export function renderFiles() {
     if (files.length > 0) {
         if (State.viewMode === 'list') {
             finalHTML += `<div class="w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"><table class="w-full text-left text-sm text-gray-600">
-                <thead class="bg-gray-50/80 border-b border-gray-200"><tr class="text-[11px] uppercase tracking-wider text-gray-500 font-bold"><th class="px-5 py-3 w-10"></th><th class="px-2 py-3">Name</th><th class="px-5 py-3 hidden md:table-cell">Date Modified</th><th class="px-5 py-3 hidden sm:table-cell">Size</th><th class="px-5 py-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-gray-100">`;
+                <thead class="bg-gray-50/80 border-b border-gray-200"><tr class="text-[11px] uppercase tracking-wider text-gray-500 font-bold"><th class="px-5 py-3 w-10"></th><th class="px-2 py-3 font-bold">Name</th><th class="px-5 py-3 hidden md:table-cell">Date Modified</th><th class="px-5 py-3 hidden sm:table-cell">Size</th><th class="px-5 py-3 text-right">Actions</th></tr></thead><tbody>`;
                 
             files.forEach(file => {
                 const sizeMB = (file.fileSize / (1024 * 1024)).toFixed(2) + ' MB';
@@ -350,7 +476,7 @@ export function renderFiles() {
                     <td class="px-5 py-3.5 w-12 cursor-pointer" onclick="event.stopPropagation(); window.toggleSelect('${file.id}', event)">
                         <i data-lucide="${isSelected ? 'check-square' : 'square'}" class="w-5 h-5 inline-block ${isSelected ? 'text-blue-600 fill-blue-100' : 'text-gray-300 hover:text-gray-500'}"></i>
                     </td>
-                    <td class="px-2 py-3.5 font-bold text-gray-900 flex items-center gap-3 cursor-pointer" onclick="${State.currentView !== 'trash' ? `window.processFileAction('${file.id}', 'preview')` : ''}"><i data-lucide="file" class="w-5 h-5 text-gray-400 shrink-0"></i> <span class="truncate max-w-[150px] sm:max-w-[300px]">${file.fileName}</span></td>
+                    <td class="px-2 py-3.5 font-bold text-gray-900 flex items-center gap-3 cursor-pointer" onclick="${State.currentView !== 'trash' ? `window.processFileAction('${file.id}', 'preview')` : ''}">${file.fileName}</td>
                     <td class="px-5 py-3.5 font-medium hidden md:table-cell text-gray-500">${new Date(file.createdAt).toLocaleDateString()}</td>
                     <td class="px-5 py-3.5 font-medium hidden sm:table-cell text-gray-500">${sizeMB}</td>
                     <td class="px-5 py-3.5 text-right flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">${!isSelected ? actions : ''}</td>
@@ -382,7 +508,7 @@ export function renderFiles() {
                 finalHTML += `
                 <div class="${selectClass} border rounded-xl overflow-hidden hover:shadow-md transition-all cursor-pointer group relative flex flex-col" onclick="${State.currentView !== 'trash' ? `window.processFileAction('${file.id}', 'preview')` : ''}">
                     
-                    <button onclick="event.stopPropagation(); window.toggleSelect('${file.id}', event)" class="absolute top-2 left-2 z-20 p-1 rounded-md ${isSelected ? 'opacity-100 text-blue-600 bg-white' : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:bg-white/80'} transition-opacity">
+                    <button onclick="event.stopPropagation(); window.toggleSelect('${file.id}', event)" class="absolute top-2 left-2 z-20 p-1 rounded-md ${isSelected ? 'opacity-100 text-blue-600 bg-blue-100' : 'opacity-0 group-hover:opacity-100 text-gray-600 bg-gray-100'}">
                         <i data-lucide="${isSelected ? 'check-square' : 'square'}" class="w-5 h-5 ${isSelected ? 'fill-blue-100' : ''}"></i>
                     </button>
 
@@ -413,6 +539,15 @@ export function renderFiles() {
 }
 window.renderFiles = renderFiles;
 
+/**
+ * Loads all files and folders for the current user from Firestore.
+ * Queries files collection filtered by current user ID.
+ * Sorts files by creation date (newest first).
+ * Shows file loader during query execution.
+ * Re-renders file list after loading completes.
+ * @async
+ * @returns {Promise<void>}
+ */
 export async function loadFiles() {
     if(UI.fileLoader) UI.fileLoader.classList.remove('hidden');
     try {
